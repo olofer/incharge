@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Basic Shader Programming Example</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="container">
+    <canvas id="glCanvas"></canvas>
+    <canvas id="2dCanvas"></canvas>
+  </div>
+
+  <script>
+    // Get canvas and context
+    const canvas = document.getElementById('glCanvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) {
+      alert('WebGL2 not supported');
+      throw new Error('WebGL2 not supported');
+    }
+
+    // The standard "canvas" is for text overlay
+    const canvas2d = document.getElementById('2dCanvas');
+
+    // Set canvas to fullscreen
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+
+      canvas2d.width = window.innerWidth;
+      canvas2d.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Vertex Shader
+    const vertexShaderSource = `#version 300 es
+            in vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+
+    // Fragment Shader
+    const fragmentShaderSource = `#version 300 es
+            precision highp float;
+            const float PI = 3.141592653589793;
+            out vec4 fragColor;
+            uniform vec2 u_resolution;
+            uniform float u_time;
+            void main() {
+                vec2 uv = 2.0 * (gl_FragCoord.xy / u_resolution.xy) - 1.0;
+                float aspect = u_resolution.x / u_resolution.y;
+                uv.x *= aspect;
+                float R = sqrt(uv.x * uv.x + uv.y * uv.y);
+                float K = 2.0 * PI / 0.25;
+                float OMEGA = 2.0 * PI * 1.0;
+                float wave = cos(K * R - OMEGA * u_time)  * 0.5 + 0.5;
+                float alpha = wave / (1.0 + R * R);
+                vec3 color = vec3(wave, wave * 0.5, 1.0 - wave);
+                fragColor = vec4(color, alpha);
+            }
+        `;
+
+    // Compile Shader
+    function createShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+      return shader;
+    }
+
+    // Create Program
+    function createProgram(gl, vertexShader, fragmentShader) {
+      const program = gl.createProgram();
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error('Program link error:', gl.getProgramInfoLog(program));
+        return null;
+      }
+      return program;
+    }
+
+    // Compile shaders and create program
+    const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+    const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+    const program = createProgram(gl, vertexShader, fragmentShader);
+    if (!program) throw new Error('Program creation failed');
+
+    // Set up attributes and uniforms
+    const positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+    const resolutionUniformLocation = gl.getUniformLocation(program, 'u_resolution');
+    const timeUniformLocation = gl.getUniformLocation(program, 'u_time');
+
+    // Create buffer for a full-screen quad
+    const positionBuffer = gl.createBuffer();
+    const positions = new Float32Array([
+      -1, -1,
+      1, -1,
+      -1, 1,
+      -1, 1,
+      1, -1,
+      1, 1
+    ]);
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+    // Set up VAO
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.enableVertexAttribArray(positionAttributeLocation);
+    gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    // Animation loop
+    const betaFPSfilter = 1.0 / 100.0;
+    var filteredFPS = 0.0;
+    var startTime = performance.now();
+    var lastTime = startTime;
+
+    function render()
+    {
+      const time = performance.now();
+      const elapsedTimeSeconds = (time - lastTime) / 1000; // Time in seconds
+      lastTime = time;
+
+      if (elapsedTimeSeconds > 0.0 && elapsedTimeSeconds < 1.0)
+        filteredFPS = (betaFPSfilter) * (1.0 / elapsedTimeSeconds) + (1.0 - betaFPSfilter) * filteredFPS;
+
+      // Update uniforms
+      gl.useProgram(program);
+      gl.uniform2f(resolutionUniformLocation, canvas.width, canvas.height);
+      gl.uniform1f(timeUniformLocation, (time - startTime) * 0.001);
+
+      // Clear and draw
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.bindVertexArray(vao);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // Text overlay
+      const ctx = canvas2d.getContext('2d');
+      ctx.clearRect(0, 0, canvas2d.width, canvas2d.height);
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = 'white';
+      ctx.font = '20px Arial';
+      ctx.fillText('<fps> = ' + filteredFPS.toFixed(1), 20.0, canvas2d.height - 30.0);
+
+      // Request next frame
+      requestAnimationFrame(render);
+    }
+
+    // Start animation
+    gl.useProgram(program);
+    render();
+  </script>
+</body>
+
+</html>
