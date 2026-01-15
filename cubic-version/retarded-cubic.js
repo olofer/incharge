@@ -6,6 +6,50 @@ The buffer is periodic. The interpolated path will be continuous up to the first
 
 */
 
+function catmull_rom_coefs(f) {
+  const fn1 = f[0];
+  const f0 = f[1];
+  const f1 = f[2];
+  const f2 = f[3];
+  const c0 = 2.0 * f0;
+  const c1 = -1.0 * fn1 + 1.0 * f1;
+  const c2 = 2.0 * fn1 - 5.0 * f0 + 4.0 * f1 - 1.0 * f2;
+  const c3 = -1.0 * fn1 + 3.0 * f0 - 3.0 * f1 + 1.0 * f2;
+  return [c0, c1, c2, c3];
+}
+
+function spline_value(c, t) {
+  const t2 = t * t;
+  return 0.5 * (c[0] + c[1] * t + c[2] * t2 + c[3] * t2 * t);
+}
+
+function spline_derivative(c, t) {
+  const t2 = t * t;
+  return 0.5 * (c[1] + 2.0 * c[2] * t + 3.0 * c[3] * t2);
+}
+
+function cubic_interp(theta, omega, vertices) {
+  const npts = vertices.length / 2;
+  const delta_theta = 2.0 * Math.PI / npts;
+  const dscale = omega / delta_theta;
+  while (theta < -Math.PI) theta += 2 * Math.PI;
+  while (theta > Math.PI) theta -= 2 * Math.PI;
+  const z = (theta + Math.PI) / delta_theta;
+  const idx = Math.floor(z);
+  const w = z - idx;
+  const in1 = (idx + npts - 1) % npts;
+  const i0 = idx % npts;
+  const i1 = (idx + 1) % npts;
+  const i2 = (idx + 2) % npts;
+  const cx = catmull_rom_coefs([vertices[2 * in1 + 0], vertices[2 * i0 + 0], vertices[2 * i1 + 0], vertices[2 * i2 + 0]]);
+  const cy = catmull_rom_coefs([vertices[2 * in1 + 1], vertices[2 * i0 + 1], vertices[2 * i1 + 1], vertices[2 * i2 + 1]]);
+  const rx = spline_value(cx, w);
+  const ry = spline_value(cy, w);
+  const vx = spline_derivative(cx, w) * dscale;
+  const vy = spline_derivative(cy, w) * dscale;
+  return [rx, ry, vx, vy];
+}
+
 // This test should reproduce a simple monochromatic source (circular oscillation)
 const numSourceVertices = 32; // need to match the number in the shader code
 const sourceVertices = new Float32Array(2 * numSourceVertices);
@@ -17,20 +61,12 @@ for (let i = 0; i < numSourceVertices; i++) {
   sourceVertices[k + 1] = Math.sin(thetai);
 }
 
-// Discontinuities in the velocity "kicks" up potential waves!
+// Test spline eval
+const rrvv = cubic_interp(0.0, 1.0, sourceVertices);
+console.log(rrvv); // should show [1, 0, 0, 1]
 
-// TODO: need to figure out what the maximum velocity is for the provided trajectory
-// the exact velocity depends on the interpolation scheme
-// this is essential so that "beta" can be defined
-
-// TODO: also allow overlay via canvas/js toggleable
-
-// REPLICATE THE CATMULL-ROM SPLINE CODE IN JS FOR THIS PURPOSE !
-// The interpolation seems to work quite OK in the shader program so all that is needed is a scan of the max velocity 
-// for a given path; ...
-
-// TODO: I want this to have quite a few different presets which can be cycled with SPACE? TAB cycles coloring mode!
-// TODO: I want this to also be able to visualize the fields |E| and |B| and even the Poynting |S| !
+// TODO: Implement a few different presets which can be cycled with SPACE? Or even an editor mode for the vertices?
+// TODO: Visualize the fields |E| and |B| and the Poynting |S|
 
 // Get canvas and context
 const canvasgl = document.getElementById('gl-canvas');
@@ -78,8 +114,6 @@ const fragmentShaderSource = `#version 300 es
   // The number of spline points must be a power of two (for bitmask modulo op below)
   #define NUM_SOURCE_VERTICES 32
   uniform vec2 u_source_vertices[NUM_SOURCE_VERTICES];
-
-  // const ivec4 modulo_mask = ivec4(NUM_SOURCE_VERTICES - 1);
 
   const float PI = 3.141592653589793;
   const float TWOPI = 2.0 * PI;
@@ -385,6 +419,8 @@ function render() {
   ctx.font = '20px Arial';
   ctx.fillText('<fps> = ' + filteredFPS.toFixed(1), 20.0, canvas2d.height - 25.0);
   ctx.fillText('[b] beta = ' + betaLevel.toFixed(4) + ' [f] (anim.) freq = ' + freqValue.toFixed(4), 20.0, 25.0);
+
+  // TODO: optionally overlay the actual path traced using the spline interplator
 
   // Request next frame
   requestAnimationFrame(render);
