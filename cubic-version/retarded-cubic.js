@@ -23,6 +23,8 @@ for (let i = 0; i < numSourceVertices; i++) {
 // the exact velocity depends on the interpolation scheme
 // this is essential so that "beta" can be defined
 
+// TODO: also allow overlay via canvas/js toggleable
+
 // REPLICATE THE CATMULL-ROM SPLINE CODE IN JS FOR THIS PURPOSE !
 // The interpolation seems to work quite OK in the shader program so all that is needed is a scan of the max velocity 
 // for a given path; ...
@@ -73,8 +75,11 @@ const fragmentShaderSource = `#version 300 es
   uniform float u_freq;
   uniform int u_style;
 
+  // The number of spline points must be a power of two (for bitmask modulo op below)
   #define NUM_SOURCE_VERTICES 32
   uniform vec2 u_source_vertices[NUM_SOURCE_VERTICES];
+
+  // const ivec4 modulo_mask = ivec4(NUM_SOURCE_VERTICES - 1);
 
   const float PI = 3.141592653589793;
   const float TWOPI = 2.0 * PI;
@@ -102,27 +107,31 @@ const fragmentShaderSource = `#version 300 es
     return 0.5 * (c[1] + 2.0 * c[2] * t + 3.0 * c[3] * t2);
   }
 
-  vec2[3] cubic_interp(vec2 osc, float omega)
+  vec2 spline_acceleration(vec2[4] c, float t)
+  {
+    return 0.5 * (2.0 * c[2] + 6.0 * c[3] * t);
+  }
+
+  vec2[3] cubic_interp(vec2 osc, float omega, bool only_position)
   {
     float theta = atan(osc.y, osc.x); // (-PI, PI]
     float z = (theta + PI) / delta_theta; // float index into array
     float w = fract(z);
-    int i0 = int(z) % NUM_SOURCE_VERTICES;
-    int in1 = (i0 == 0 ? NUM_SOURCE_VERTICES - 1 : i0 - 1);
-    int i1 = (i0 + 1) % NUM_SOURCE_VERTICES;
-    int i2 = (i0 + 2) % NUM_SOURCE_VERTICES;
 
-    vec2 fn1 = u_source_vertices[in1];
-    vec2 f0 = u_source_vertices[i0];
-    vec2 f1 = u_source_vertices[i1];
-    vec2 f2 = u_source_vertices[i2];
+    int i0 = int(z);
+    vec2 fn1 = u_source_vertices[(i0 + NUM_SOURCE_VERTICES - 1) & (NUM_SOURCE_VERTICES - 1)];
+    vec2 f0 = u_source_vertices[i0 & (NUM_SOURCE_VERTICES - 1)];
+    vec2 f1 = u_source_vertices[(i0 + 1) & (NUM_SOURCE_VERTICES - 1)];
+    vec2 f2 = u_source_vertices[(i0 + 2) & (NUM_SOURCE_VERTICES - 1)];
 
     vec2[4] c = catmull_rom_coefs(fn1, f0, f1, f2);
 
     vec2[3] rva;
     rva[0] = spline_value(c, w);
-    rva[1] = spline_derivative(c, w) * (omega / delta_theta);
-    rva[2] = vec2(0.0, 0.0);
+    if (only_position) return rva;
+    float dscale = (omega / delta_theta);
+    rva[1] = spline_derivative(c, w) * dscale;
+    rva[2] = spline_acceleration(c, w) * dscale * dscale;
     return rva;
   }
 
@@ -135,7 +144,7 @@ const fragmentShaderSource = `#version 300 es
 
   float root_function(vec2 osc, float omega, float c, vec2 pos, float tau) {
     vec2 osc_ = backroll_osc(osc, omega, tau);
-    vec2[3] src = cubic_interp(osc_, omega);
+    vec2[3] src = cubic_interp(osc_, omega, true);
     float dx = pos.x - src[0].x;
     float dy = pos.y - src[0].y;
     return sqrt(dx * dx + dy * dy) - c * tau;
@@ -171,7 +180,7 @@ const fragmentShaderSource = `#version 300 es
     float BETA = u_beta;
     float RHOMAX = 1.00;
     float OMEGA = 2.0 * PI * u_freq;
-    float c = 2.0 * abs(OMEGA) * RHOMAX / BETA;
+    float c = abs(OMEGA) * RHOMAX / BETA;
 
     vec2 uv = 2.0 * (gl_FragCoord.xy / u_resolution.xy) - 1.0;
     float aspect = u_resolution.x / u_resolution.y;
@@ -183,7 +192,7 @@ const fragmentShaderSource = `#version 300 es
     float tau = bisect_tau(osc, OMEGA, c, uv);
 
     vec2 osc_tau = backroll_osc(osc, OMEGA, tau);
-    vec2[3] src = cubic_interp(osc_tau, OMEGA);
+    vec2[3] src = cubic_interp(osc_tau, OMEGA, false);
 
     vec2 rsrc = uv - src[0];
     float betax = src[1].x / c;
