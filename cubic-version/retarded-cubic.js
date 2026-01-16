@@ -74,25 +74,57 @@ function canvas_coord(xy, wh, z) {
 
 const numSourceVertices = 32; // need to match the number in the shader code
 const sourceVertices = new Float32Array(2 * numSourceVertices);
-const delta_theta = 2.0 * Math.PI / numSourceVertices;
-for (let i = 0; i < numSourceVertices; i++) {
-  k = 2 * i;
-  let thetai = -Math.PI + i * delta_theta;
-  sourceVertices[k + 0] = Math.sign(Math.cos(thetai + 0.01));
-  sourceVertices[k + 1] = Math.sign(Math.sin(thetai + 0.01)); //(Math.sin(thetai) + Math.sin(3 * thetai) / 3 + Math.sin(5 * thetai) / 5) * 2;
+
+function preset_path_0(theta) {
+  return [Math.cos(theta), Math.sin(theta)];
 }
 
-// Test spline eval
-const rrvv = cubic_interp(0.0, 1.0, sourceVertices);
-console.log(rrvv); // should show [1, 0, 0, 1]
+function preset_path_1(theta) {
+  const shift = 0.01;
+  return [Math.sign(Math.cos(theta + shift)), Math.sign(Math.sin(theta + shift))];
+}
 
+function preset_path_2(theta) {
+  const xi = theta / (2 * Math.PI);
+  return [xi, xi];
+}
+
+function preset_path_3(theta) {
+  return [Math.cos(2.0 * theta), Math.sin(3.0 * theta)];
+}
+
+function preset_path_4(theta) {
+  const r = 2.0 + 0.25 * Math.cos(10 * theta);
+  return [r * Math.cos(theta), r * Math.sin(theta)];
+}
+
+function preset_path_5(theta) {
+  const r = 2.0;
+  const phase = 0.10 * Math.cos(10 * theta)
+  return [r * Math.cos(theta + phase), r * Math.sin(theta + phase)];
+}
+
+const PATH_FUNCTIONS = [preset_path_0, preset_path_1, preset_path_2, preset_path_3, preset_path_4, preset_path_5];
+
+function generate_preset_path(idx) {
+  const delta_theta = 2.0 * Math.PI / numSourceVertices;
+  const fxy = PATH_FUNCTIONS[idx];
+  for (let i = 0; i < numSourceVertices; i++) {
+    k = 2 * i;
+    let thetai = -Math.PI + i * delta_theta;
+    let xy = fxy(thetai);
+    sourceVertices[k + 0] = xy[0];
+    sourceVertices[k + 1] = xy[1];
+  }
+}
+
+let IPATH = 1;
+generate_preset_path(IPATH);
 let VMAX = find_maximum_velocity(1.0, sourceVertices);
 console.log(VMAX);
 
-// TODO: add 'c' for color contrast adjustment
-// TODO: add vertex modifier that adds a litle noise to the control points 'n'
-// TODO: Implement a few different presets which can be cycled with SPACE? Or even an editor mode for the vertices?
-// TODO: Visualize the fields |E| and |B| and the Poynting |S|
+// const rrvv = cubic_interp(0.0, 1.0, sourceVertices);
+// console.log(rrvv); // should show [1, 0, 0, 1]
 
 // Get canvas and context
 const canvasgl = document.getElementById('gl-canvas');
@@ -410,6 +442,26 @@ function keyDownEvent(e) {
     return;
   }
 
+  if (code == 38 || code == 40) { // up/down keys cycles through the preset paths
+    if (code == 38) IPATH = (IPATH + 1) % PATH_FUNCTIONS.length;
+    if (code == 40) IPATH = (IPATH == 0 ? PATH_FUNCTIONS.length - 1 : IPATH - 1);
+    generate_preset_path(IPATH);
+    VMAX = find_maximum_velocity(1.0, sourceVertices);
+    console.log([IPATH, VMAX]);
+    return;
+  }
+
+  if (key == 'n' || key == 'N') {
+    // Add a little bit off random noise to the current path
+    for (let i = 0; i < numSourceVertices; i++) {
+      sourceVertices[2 * i + 0] += (2 * Math.random() - 1) * 0.01;
+      sourceVertices[2 * i + 1] += (2 * Math.random() - 1) * 0.01;
+    }
+    VMAX = find_maximum_velocity(1.0, sourceVertices);
+    console.log(["added noise", VMAX]);
+    return;
+  }
+
   if (key == 'r' || key == 'R') {
     simTime = 0.0;
     plotStyle = 0;
@@ -466,7 +518,7 @@ function render() {
     ctx.lineTo(0, canvas2d.height);
     ctx.stroke();*/
 
-    ctx.fillText('(showing path)', 20.0, 45.0);
+    ctx.fillText('Path preset #' + IPATH.toFixed(0) + ' (up key)', 20.0, 45.0);
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(255,255,255,0.33)';
     ctx.beginPath();
@@ -482,7 +534,6 @@ function render() {
     ctx.stroke();
   }
 
-  // Request next frame
   requestAnimationFrame(render);
 }
 
