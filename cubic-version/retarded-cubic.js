@@ -104,7 +104,21 @@ function preset_path_5(theta) {
   return [r * Math.cos(theta + phase), r * Math.sin(theta + phase)];
 }
 
-const PATH_FUNCTIONS = [preset_path_0, preset_path_1, preset_path_2, preset_path_3, preset_path_4, preset_path_5];
+function preset_path_6(theta) {
+  const cs = Math.cos(theta);
+  const sn = Math.sin(theta);
+  return [cs * Math.sqrt(Math.abs(cs)), sn * Math.sqrt(Math.abs(sn))];
+}
+
+const PATH_FUNCTIONS = [
+  preset_path_0,
+  preset_path_1,
+  preset_path_2,
+  preset_path_3,
+  preset_path_4,
+  preset_path_5,
+  preset_path_6
+];
 
 function generate_preset_path(idx) {
   const delta_theta = 2.0 * Math.PI / numSourceVertices;
