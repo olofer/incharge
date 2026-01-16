@@ -1,6 +1,6 @@
 /*
 
-A single charged particle follows a general path defined by vertices (x,y) in a float buffer.
+A single charged particle follows a general path defined by vertices (x, y) in a float buffer.
 The position and velocity and acceleration at any time t is obtained by cubic interpolation in the buffer.
 The buffer is periodic. The interpolated path will be continuous up to the first derivative (velocity).
 
@@ -50,6 +50,19 @@ function cubic_interp(theta, omega, vertices) {
   return [rx, ry, vx, vy];
 }
 
+function find_maximum_velocity(omega, vertices) {
+  const npts = vertices.length / 2;
+  const nsamples = 5 * npts; // oversample the path
+  let max_vsq = 0.0;
+  for (let i = 0; i < nsamples; i++) {
+    const thetai = i * 2 * Math.PI / nsamples;
+    const rv = cubic_interp(thetai, omega, vertices);
+    const vsq = rv[2] * rv[2] + rv[3] * rv[3];
+    if (vsq > max_vsq) max_vsq = vsq;
+  }
+  return Math.sqrt(max_vsq);
+}
+
 // This test should reproduce a simple monochromatic source (circular oscillation)
 const numSourceVertices = 32; // need to match the number in the shader code
 const sourceVertices = new Float32Array(2 * numSourceVertices);
@@ -58,13 +71,18 @@ for (let i = 0; i < numSourceVertices; i++) {
   k = 2 * i;
   let thetai = -Math.PI + i * delta_theta;
   sourceVertices[k + 0] = Math.cos(thetai);
-  sourceVertices[k + 1] = Math.sin(thetai);
+  sourceVertices[k + 1] = (Math.sin(thetai) + Math.sin(3 * thetai) / 3 + Math.sin(5 * thetai) / 5) * 2;
 }
 
 // Test spline eval
 const rrvv = cubic_interp(0.0, 1.0, sourceVertices);
 console.log(rrvv); // should show [1, 0, 0, 1]
 
+let VMAX = find_maximum_velocity(1.0, sourceVertices);
+console.log(VMAX);
+
+// TODO: add 'c' for color contrast adjustment
+// TODO: add vertex modifier that adds a litle noise to the control points 'n'
 // TODO: Implement a few different presets which can be cycled with SPACE? Or even an editor mode for the vertices?
 // TODO: Visualize the fields |E| and |B| and the Poynting |S|
 
@@ -107,6 +125,7 @@ const fragmentShaderSource = `#version 300 es
   uniform vec2 u_rho;
   uniform float u_time;
   uniform float u_zoom;
+  uniform float u_vmax;
   uniform float u_beta;
   uniform float u_freq;
   uniform int u_style;
@@ -208,21 +227,19 @@ const fragmentShaderSource = `#version 300 es
     return (tau0 + tau1) / 2.0;
   }
 
-  void main() {
-    // TODO: color squash, compression/contrast transformations (c)
-
+  void main()
+  {
     float BETA = u_beta;
-    float RHOMAX = 1.00;
     float OMEGA = 2.0 * PI * u_freq;
-    float c = abs(OMEGA) * RHOMAX / BETA;
+    float c = abs(OMEGA) * u_vmax / BETA;
 
     vec2 uv = 2.0 * (gl_FragCoord.xy / u_resolution.xy) - 1.0;
     float aspect = u_resolution.x / u_resolution.y;
     uv.x *= aspect;
-
     uv *= u_zoom;
 
-    vec2 osc = vec2(cos(OMEGA*u_time), sin(OMEGA*u_time));
+    float phase = OMEGA * u_time;
+    vec2 osc = vec2(cos(phase), sin(phase));
     float tau = bisect_tau(osc, OMEGA, c, uv);
 
     vec2 osc_tau = backroll_osc(osc, OMEGA, tau);
@@ -245,7 +262,8 @@ const fragmentShaderSource = `#version 300 es
     vec3 color;
 
     if (u_style == 0) {
-      color = vec3(0.0, sqrt(Ax * Ax + Ay * Ay), Q);
+      //color = vec3(0.0, sqrt(Ax * Ax + Ay * Ay), Q);
+      color = vec3(0.0, sqrt(Q), 0.0);
     } else if (u_style == 1) {
       color = vec3(0.0, Rtau / u_zoom , Q);
     } else if (u_style == 2) {
@@ -298,6 +316,7 @@ const resolutionUniformLocation = gl.getUniformLocation(program, 'u_resolution')
 const sourceUniformLocation = gl.getUniformLocation(program, 'u_source_vertices');
 const timeUniformLocation = gl.getUniformLocation(program, 'u_time');
 const zoomUniformLocation = gl.getUniformLocation(program, 'u_zoom');
+const vmaxUniformLocation = gl.getUniformLocation(program, 'u_vmax');
 const betaUniformLocation = gl.getUniformLocation(program, 'u_beta');
 const freqUniformLocation = gl.getUniformLocation(program, 'u_freq');
 const styleUniformLocation = gl.getUniformLocation(program, 'u_style');
@@ -326,14 +345,15 @@ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
 // Animation loop
 const numPlotStyles = 5;
-let plotStyle = 0;
+let plotStyle = 3;
 const betaFPSfilter = 1.0 / 100.0;
 let filteredFPS = 0.0;
 let lastTime = performance.now();
 let simTime = 0.0;
 let zoomLevel = 8.0;
 let betaLevel = 0.85;
-let freqValue = 0.25;
+let freqValue = 0.20;
+let showPath = false;
 
 function keyDownEvent(e) {
   let code = e.keyCode;
@@ -343,6 +363,12 @@ function keyDownEvent(e) {
     plotStyle += e.shiftKey ? -1 : 1;
     if (plotStyle < 0) plotStyle = numPlotStyles - 1;
     if (plotStyle == numPlotStyles) plotStyle = 0;
+    e.preventDefault();
+    return;
+  }
+
+  if (key == ' ') {
+    showPath = !showPath;
     e.preventDefault();
     return;
   }
@@ -402,6 +428,7 @@ function render() {
   gl.uniform1f(timeUniformLocation, simTime);
   gl.uniform1f(zoomUniformLocation, zoomLevel);
   gl.uniform1f(betaUniformLocation, betaLevel);
+  gl.uniform1f(vmaxUniformLocation, VMAX);
   gl.uniform1f(freqUniformLocation, freqValue);
   gl.uniform1i(styleUniformLocation, plotStyle);
 
@@ -420,7 +447,11 @@ function render() {
   ctx.fillText('<fps> = ' + filteredFPS.toFixed(1), 20.0, canvas2d.height - 25.0);
   ctx.fillText('[b] beta = ' + betaLevel.toFixed(4) + ' [f] (anim.) freq = ' + freqValue.toFixed(4), 20.0, 25.0);
 
-  // TODO: optionally overlay the actual path traced using the spline interplator
+  if (showPath) {
+    ctx.fillText('(showing path)', 20.0, 45.0);
+    // TODO: draw vertex-buffer points (oversampled?); need to convert (x,y) to canvas x,y
+    // must use zoom, aspect, width, height to transform
+  }
 
   // Request next frame
   requestAnimationFrame(render);
