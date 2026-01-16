@@ -63,15 +63,23 @@ function find_maximum_velocity(omega, vertices) {
   return Math.sqrt(max_vsq);
 }
 
-// This test should reproduce a simple monochromatic source (circular oscillation)
+function canvas_coord(xy, wh, z) {
+  const aspect = wh[0] / wh[1];
+  const hw = wh[0] / 2;
+  const hh = wh[1] / 2;
+  const x = hw + xy[0] * hw / aspect / z;
+  const y = hh - xy[1] * hh / z;
+  return [x, y];
+}
+
 const numSourceVertices = 32; // need to match the number in the shader code
 const sourceVertices = new Float32Array(2 * numSourceVertices);
 const delta_theta = 2.0 * Math.PI / numSourceVertices;
 for (let i = 0; i < numSourceVertices; i++) {
   k = 2 * i;
   let thetai = -Math.PI + i * delta_theta;
-  sourceVertices[k + 0] = Math.cos(thetai);
-  sourceVertices[k + 1] = (Math.sin(thetai) + Math.sin(3 * thetai) / 3 + Math.sin(5 * thetai) / 5) * 2;
+  sourceVertices[k + 0] = Math.sign(Math.cos(thetai + 0.01));
+  sourceVertices[k + 1] = Math.sign(Math.sin(thetai + 0.01)); //(Math.sin(thetai) + Math.sin(3 * thetai) / 3 + Math.sin(5 * thetai) / 5) * 2;
 }
 
 // Test spline eval
@@ -440,6 +448,7 @@ function render() {
 
   // Text overlay
   const ctx = canvas2d.getContext('2d');
+  //ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas2d.width, canvas2d.height);
   ctx.globalAlpha = 1.0;
   ctx.fillStyle = 'white';
@@ -448,9 +457,29 @@ function render() {
   ctx.fillText('[b] beta = ' + betaLevel.toFixed(4) + ' [f] (anim.) freq = ' + freqValue.toFixed(4), 20.0, 25.0);
 
   if (showPath) {
+    /*ctx.strokeStyle = 'red';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(canvas2d.width, canvas2d.height);
+    ctx.moveTo(canvas2d.width, 0);
+    ctx.lineTo(0, canvas2d.height);
+    ctx.stroke();*/
+
     ctx.fillText('(showing path)', 20.0, 45.0);
-    // TODO: draw vertex-buffer points (oversampled?); need to convert (x,y) to canvas x,y
-    // must use zoom, aspect, width, height to transform
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(255,255,255,0.33)';
+    ctx.beginPath();
+    const wh = [canvas2d.width, canvas2d.height];
+    let coords = canvas_coord([sourceVertices[0], sourceVertices[1]], wh, zoomLevel);
+    ctx.moveTo(coords[0], coords[1]);
+    for (let i = 1; i < numSourceVertices; i++) {
+      coords = canvas_coord([sourceVertices[i * 2 + 0], sourceVertices[i * 2 + 1]], wh, zoomLevel);
+      ctx.lineTo(coords[0], coords[1])
+    }
+    coords = canvas_coord([sourceVertices[0], sourceVertices[1]], wh, zoomLevel);
+    ctx.lineTo(coords[0], coords[1]);
+    ctx.stroke();
   }
 
   // Request next frame
