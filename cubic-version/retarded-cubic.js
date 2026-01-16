@@ -165,6 +165,7 @@ const fragmentShaderSource = `#version 300 es
   uniform vec2 u_rho;
   uniform float u_time;
   uniform float u_zoom;
+  uniform float u_contrast;
   uniform float u_vmax;
   uniform float u_beta;
   uniform float u_freq;
@@ -302,8 +303,7 @@ const fragmentShaderSource = `#version 300 es
     vec3 color;
 
     if (u_style == 0) {
-      //color = vec3(0.0, sqrt(Ax * Ax + Ay * Ay), Q);
-      color = vec3(0.0, sqrt(Q), 0.0);
+      color = vec3(abs(betax), Q, abs(betay));
     } else if (u_style == 1) {
       color = vec3(0.0, Rtau / u_zoom , Q);
     } else if (u_style == 2) {
@@ -314,6 +314,7 @@ const fragmentShaderSource = `#version 300 es
       color = vec3(abs(Ax), 0.0, abs(Ay));
     }
 
+    if (u_contrast != 1.0) color = pow(color, vec3(u_contrast));
     fragColor = vec4(color, alpha);
   }
 `;
@@ -356,6 +357,7 @@ const resolutionUniformLocation = gl.getUniformLocation(program, 'u_resolution')
 const sourceUniformLocation = gl.getUniformLocation(program, 'u_source_vertices');
 const timeUniformLocation = gl.getUniformLocation(program, 'u_time');
 const zoomUniformLocation = gl.getUniformLocation(program, 'u_zoom');
+const contrastUniformLocation = gl.getUniformLocation(program, 'u_contrast');
 const vmaxUniformLocation = gl.getUniformLocation(program, 'u_vmax');
 const betaUniformLocation = gl.getUniformLocation(program, 'u_beta');
 const freqUniformLocation = gl.getUniformLocation(program, 'u_freq');
@@ -393,6 +395,7 @@ let simTime = 0.0;
 let zoomLevel = 8.0;
 let betaLevel = 0.85;
 let freqValue = 0.20;
+let contrastLevel = 1.0;
 let showPath = false;
 
 function keyDownEvent(e) {
@@ -464,7 +467,13 @@ function keyDownEvent(e) {
 
   if (key == 'r' || key == 'R') {
     simTime = 0.0;
-    plotStyle = 0;
+    contrastLevel = 1.0;
+    return;
+  }
+
+  if (key == 'c' || key == 'C') {
+    contrastLevel *= (e.shiftKey ? 1.25 : 0.80);
+    console.log("contrast", contrastLevel);
     return;
   }
 
@@ -487,6 +496,7 @@ function render() {
   gl.uniform2fv(sourceUniformLocation, sourceVertices);
   gl.uniform1f(timeUniformLocation, simTime);
   gl.uniform1f(zoomUniformLocation, zoomLevel);
+  gl.uniform1f(contrastUniformLocation, contrastLevel);
   gl.uniform1f(betaUniformLocation, betaLevel);
   gl.uniform1f(vmaxUniformLocation, VMAX);
   gl.uniform1f(freqUniformLocation, freqValue);
@@ -518,7 +528,7 @@ function render() {
     ctx.lineTo(0, canvas2d.height);
     ctx.stroke();*/
 
-    ctx.fillText('Path preset #' + IPATH.toFixed(0) + ' (up key)', 20.0, 45.0);
+    ctx.fillText('Path preset #' + IPATH.toFixed(0) + ' (up/dn keys)', 20.0, 45.0);
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(255,255,255,0.33)';
     ctx.beginPath();
