@@ -110,6 +110,10 @@ function preset_path_6(theta) {
   return [cs * Math.sqrt(Math.abs(cs)), sn * Math.sqrt(Math.abs(sn))];
 }
 
+function preset_path_7(theta) {
+  return [3.0 * Math.sin(theta), 0.0];
+}
+
 const PATH_FUNCTIONS = [
   preset_path_0,
   preset_path_1,
@@ -117,7 +121,8 @@ const PATH_FUNCTIONS = [
   preset_path_3,
   preset_path_4,
   preset_path_5,
-  preset_path_6
+  preset_path_6,
+  preset_path_7
 ];
 
 function generate_preset_path(idx) {
