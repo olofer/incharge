@@ -50,9 +50,9 @@ function cubic_interp(theta, omega, vertices) {
   return [rx, ry, vx, vy];
 }
 
-function find_maximum_velocity(omega, vertices) {
+function find_maximum_velocity(omega, vertices, overfactor) {
   const npts = vertices.length / 2;
-  const nsamples = 5 * npts; // oversample the path
+  const nsamples = overfactor * npts; // oversample the path
   let max_vsq = 0.0;
   for (let i = 0; i < nsamples; i++) {
     const thetai = i * 2 * Math.PI / nsamples;
@@ -70,6 +70,25 @@ function canvas_coord(xy, wh, z) {
   const x = hw + xy[0] * hw / aspect / z;
   const y = hh - xy[1] * hh / z;
   return [x, y];
+}
+
+function draw_path_on_canvas(ctx, wh, zoomlvl, vertices, overfactor) {
+  const npts = vertices.length / 2;
+  const nsamples = overfactor * npts;
+  const delta_theta = 2 * Math.PI / nsamples;
+  ctx.beginPath();
+  let xy_ = cubic_interp(-Math.PI + 0 * delta_theta, 1.0, vertices);
+  let coords = canvas_coord([xy_[0], xy_[1]], wh, zoomlvl);
+  ctx.moveTo(coords[0], coords[1]);
+  for (let i = 1; i < nsamples; i++) {
+    xy_ = cubic_interp(-Math.PI + i * delta_theta, 1.0, vertices);
+    coords = canvas_coord([xy_[0], xy_[1]], wh, zoomlvl);
+    ctx.lineTo(coords[0], coords[1])
+  }
+  xy_ = cubic_interp(-Math.PI + nsamples * delta_theta, 1.0, vertices);
+  coords = canvas_coord([xy_[0], xy_[1]], wh, zoomlvl);
+  ctx.lineTo(coords[0], coords[1]);
+  ctx.stroke();
 }
 
 const numSourceVertices = 32; // need to match the number in the shader code
@@ -139,11 +158,8 @@ function generate_preset_path(idx) {
 
 let IPATH = 1;
 generate_preset_path(IPATH);
-let VMAX = find_maximum_velocity(1.0, sourceVertices);
+let VMAX = find_maximum_velocity(1.0, sourceVertices, 8);
 console.log(VMAX);
-
-// const rrvv = cubic_interp(0.0, 1.0, sourceVertices);
-// console.log(rrvv); // should show [1, 0, 0, 1]
 
 // Get canvas and context
 const canvasgl = document.getElementById('gl-canvas');
@@ -468,7 +484,7 @@ function keyDownEvent(e) {
     if (code == 38) IPATH = (IPATH + 1) % PATH_FUNCTIONS.length;
     if (code == 40) IPATH = (IPATH == 0 ? PATH_FUNCTIONS.length - 1 : IPATH - 1);
     generate_preset_path(IPATH);
-    VMAX = find_maximum_velocity(1.0, sourceVertices);
+    VMAX = find_maximum_velocity(1.0, sourceVertices, 8);
     console.log([IPATH, VMAX]);
     return;
   }
@@ -538,29 +554,23 @@ function render() {
   ctx.fillText('[b] beta = ' + betaLevel.toFixed(4) + ' [f] (anim.) freq = ' + freqValue.toFixed(4), 20.0, 25.0);
 
   if (showPath) {
-    /*ctx.strokeStyle = 'red';
+    /*
+    ctx.strokeStyle = 'red';
     ctx.lineWidth = 8;
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(canvas2d.width, canvas2d.height);
     ctx.moveTo(canvas2d.width, 0);
     ctx.lineTo(0, canvas2d.height);
-    ctx.stroke();*/
+    ctx.stroke();
+    */
 
     ctx.fillText('Path preset #' + IPATH.toFixed(0) + ' (up/dn keys)', 20.0, 45.0);
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(255,255,255,0.33)';
-    ctx.beginPath();
+
     const wh = [canvas2d.width, canvas2d.height];
-    let coords = canvas_coord([sourceVertices[0], sourceVertices[1]], wh, zoomLevel);
-    ctx.moveTo(coords[0], coords[1]);
-    for (let i = 1; i < numSourceVertices; i++) {
-      coords = canvas_coord([sourceVertices[i * 2 + 0], sourceVertices[i * 2 + 1]], wh, zoomLevel);
-      ctx.lineTo(coords[0], coords[1])
-    }
-    coords = canvas_coord([sourceVertices[0], sourceVertices[1]], wh, zoomLevel);
-    ctx.lineTo(coords[0], coords[1]);
-    ctx.stroke();
+    draw_path_on_canvas(ctx, wh, zoomLevel, sourceVertices, 5);
   }
 
   requestAnimationFrame(render);
