@@ -156,9 +156,10 @@ function generate_preset_path(idx) {
   }
 }
 
+const SCANFACTOR = 8;
 let IPATH = 1;
 generate_preset_path(IPATH);
-let VMAX = find_maximum_velocity(1.0, sourceVertices, 8);
+let VMAX = find_maximum_velocity(1.0, sourceVertices, SCANFACTOR);
 console.log(VMAX);
 
 // Get canvas and context
@@ -484,7 +485,7 @@ function keyDownEvent(e) {
     if (code == 38) IPATH = (IPATH + 1) % PATH_FUNCTIONS.length;
     if (code == 40) IPATH = (IPATH == 0 ? PATH_FUNCTIONS.length - 1 : IPATH - 1);
     generate_preset_path(IPATH);
-    VMAX = find_maximum_velocity(1.0, sourceVertices, 8);
+    VMAX = find_maximum_velocity(1.0, sourceVertices, SCANFACTOR);
     console.log([IPATH, VMAX]);
     return;
   }
@@ -495,7 +496,7 @@ function keyDownEvent(e) {
       sourceVertices[2 * i + 0] += (2 * Math.random() - 1) * 0.01;
       sourceVertices[2 * i + 1] += (2 * Math.random() - 1) * 0.01;
     }
-    VMAX = find_maximum_velocity(1.0, sourceVertices);
+    VMAX = find_maximum_velocity(1.0, sourceVertices, SCANFACTOR);
     console.log(["added noise", VMAX]);
     return;
   }
