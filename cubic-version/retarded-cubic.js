@@ -275,9 +275,7 @@ const fragmentShaderSource = `#version 300 es
   float root_function(vec2 osc, float omega, float c, vec2 pos, float tau) {
     vec2 osc_ = backroll_osc(osc, omega, tau);
     vec2[3] src = cubic_interp(osc_, omega, true);
-    float dx = pos.x - src[0].x;
-    float dy = pos.y - src[0].y;
-    return sqrt(dx * dx + dy * dy) - c * tau;
+    return length(pos - src[0]) - c * tau;
   }
 
   // Bisect the retarded time tau for the present oscillator state and the present location 
@@ -323,23 +321,20 @@ const fragmentShaderSource = `#version 300 es
     vec2[3] src = cubic_interp(osc_tau, OMEGA, false);
 
     vec2 rsrc = uv - src[0];
-    float betax = src[1].x / c;
-    float betay = src[1].y / c;
-
+    vec2 beta = src[1] / c;
     float Rtau = c * tau;
-    float Rmod = Rtau - betax * rsrc.x - betay * rsrc.y;
+    float Rmod = Rtau - dot(beta, rsrc);
 
     // Encode the potential (phi, Ax, Ay) in RGB "somehow"
 
     float Q = 1.0 / (1.0 + Rmod);
-    float Ax = betax / (1.0 + Rmod);
-    float Ay = betay / (1.0 + Rmod);
+    vec2 A = beta / (1.0 + Rmod);
 
     float alpha = 1.0;
     vec3 color;
 
     if (u_style == 0) {
-      color = vec3(abs(betax), Q, abs(betay));
+      color = vec3(abs(beta.x), Q, abs(beta.y));
     } else if (u_style == 1) {
       color = vec3(0.0, Rtau / u_zoom , Q);
     } else if (u_style == 2) {
@@ -347,7 +342,7 @@ const fragmentShaderSource = `#version 300 es
     } else if (u_style == 3) {
       color = vec3(Q, 0.0, 0.0);
     } else {
-      color = vec3(abs(Ax), 0.0, abs(Ay));
+      color = vec3(abs(A.x), 0.0, abs(A.y));
     }
 
     if (u_contrast != 1.0) color = pow(color, vec3(u_contrast));
