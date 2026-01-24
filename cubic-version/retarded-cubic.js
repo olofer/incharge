@@ -302,6 +302,15 @@ const fragmentShaderSource = `#version 300 es
     return (tau0 + tau1) / 2.0;
   }
 
+  vec2 electric_field(float s, float BETA, float c, vec2 R, vec2 beta, vec2 vdot) {
+    float s2 = s * s;
+    float a1 = (1.0 - BETA * BETA) / (s2 * s);
+    float c2s2 = c * c * s2;
+    float a2 = dot(vdot, R) / (c2s2 * s);
+    float Rabs = length(R);
+    return a1 * R - a1 * Rabs * beta + a2 * R - a2 * Rabs * beta - Rabs * vdot / c2s2;
+  }
+
   void main()
   {
     float BETA = u_beta;
@@ -325,8 +334,6 @@ const fragmentShaderSource = `#version 300 es
     float Rtau = c * tau;
     float Rmod = Rtau - dot(beta, rsrc);
 
-    // Encode the potential (phi, Ax, Ay) in RGB "somehow"
-
     float Q = 1.0 / (1.0 + Rmod);
     vec2 A = beta / (1.0 + Rmod);
 
@@ -336,7 +343,8 @@ const fragmentShaderSource = `#version 300 es
     if (u_style == 0) {
       color = vec3(abs(beta.x), Q, abs(beta.y));
     } else if (u_style == 1) {
-      color = vec3(0.0, Rtau / u_zoom , Q);
+      vec2 E = electric_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
+      color = vec3(0.0, length(E), 0.0);
     } else if (u_style == 2) {
       color = vec3(Rmod / u_zoom, 0.0, 0.0);
     } else if (u_style == 3) {
