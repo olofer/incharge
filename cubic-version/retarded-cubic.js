@@ -311,6 +311,15 @@ const fragmentShaderSource = `#version 300 es
     return a1 * R - a1 * Rabs * beta + a2 * R - a2 * Rabs * beta - Rabs * vdot / c2s2;
   }
 
+  float magnetic_field(float s, float BETA, float c, vec2 R, vec2 beta, vec2 vdot) {
+    float beta_cross_r = beta.x * R.y - beta.y * R.x;
+    float betadot_cross_r = (vdot.x * R.y - vdot.y * R.x) / c;
+    float s2 = s * s;
+    float a1 = (1.0 - BETA * BETA) * c / (s2 * s);
+    float a2 = dot(vdot, R) / (c * s2 * s);
+    return beta_cross_r * (a1 + a2) + betadot_cross_r / s2;
+  }
+
   void main()
   {
     float BETA = u_beta;
@@ -341,16 +350,22 @@ const fragmentShaderSource = `#version 300 es
     vec3 color;
 
     if (u_style == 0) {
-      color = vec3(abs(beta.x), Q, abs(beta.y));
+      float Bz = magnetic_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
+      color = vec3(0.0, 0.0, Bz * Bz);
     } else if (u_style == 1) {
       vec2 E = electric_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
-      color = vec3(0.0, length(E), 0.0);
+      color = vec3(0.0, dot(E, E), 0.0);
     } else if (u_style == 2) {
-      color = vec3(Rmod / u_zoom, 0.0, 0.0);
+      float Asq = dot(A, A);
+      // color = vec3(Rmod / u_zoom, 0.0, 0.0);
+      color = vec3(Asq, 0.0, Asq);
     } else if (u_style == 3) {
       color = vec3(Q, 0.0, 0.0);
     } else {
-      color = vec3(abs(A.x), 0.0, abs(A.y));
+      float Bz = magnetic_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
+      vec2 E = electric_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
+      vec2 S = vec2(E.y * Bz, -E.x * Bz);
+      color = vec3(1.0, 1.0, 1.0) * length(S);
     }
 
     if (u_contrast != 1.0) color = pow(color, vec3(u_contrast));
