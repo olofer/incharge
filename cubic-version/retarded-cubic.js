@@ -441,6 +441,7 @@ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
 // Animation loop
 const numPlotStyles = 5;
+const styleName = ["dens. |B|^2", "dens. |E|^2", "pot. |A|^2", "pot. Phi", "flow |S|"];
 let plotStyle = 3;
 const betaFPSfilter = 1.0 / 100.0;
 let filteredFPS = 0.0;
@@ -451,6 +452,7 @@ let betaLevel = 0.85;
 let freqValue = 0.20;
 let contrastLevel = 1.0;
 let showPath = false;
+let showText = true;
 
 function keyDownEvent(e) {
   let code = e.keyCode;
@@ -531,6 +533,11 @@ function keyDownEvent(e) {
     return;
   }
 
+  if (key == 'h' || key == 'H') {
+    showText = !showText;
+    return;
+  }
+
 }
 
 window.addEventListener('keydown', keyDownEvent);
@@ -567,10 +574,14 @@ function render() {
   //ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas2d.width, canvas2d.height);
   ctx.globalAlpha = 1.0;
-  ctx.fillStyle = 'white';
-  ctx.font = '20px Arial';
-  ctx.fillText('<fps> = ' + filteredFPS.toFixed(1), 20.0, canvas2d.height - 25.0);
-  ctx.fillText('[b] beta = ' + betaLevel.toFixed(4) + ' [f] (anim.) freq = ' + freqValue.toFixed(4), 20.0, 25.0);
+
+  if (showText) {
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Arial';
+    ctx.fillText('<fps> = ' + filteredFPS.toFixed(1), 20.0, canvas2d.height - 25.0);
+    ctx.fillText('[tab] ' + styleName[plotStyle] + ', [b] beta: ' + betaLevel.toFixed(4) + ', [f] (anim.) freq: ' + freqValue.toFixed(4), 20.0, 25.0);
+    ctx.fillText('[up/dn] path preset #' + IPATH.toFixed(0) + ' [space] to show', 20.0, 45.0);
+  }
 
   if (showPath) {
     /*
@@ -584,7 +595,6 @@ function render() {
     ctx.stroke();
     */
 
-    ctx.fillText('Path preset #' + IPATH.toFixed(0) + ' (up/dn keys)', 20.0, 45.0);
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(255,255,255,0.33)';
 
