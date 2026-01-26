@@ -3,6 +3,8 @@
 A single charged particle follows a general path defined by vertices (x, y) in a float buffer.
 The position and velocity and acceleration at any time t is obtained by cubic interpolation in the buffer.
 The buffer is periodic. The interpolated path will be continuous up to the first derivative (velocity).
+To ensure smooth field plots, the acceleration must not have any jumps, so it is calculated in a way
+which is not strictly consistent with the polynomial forms used for the path position and velocity.
 
 */
 
@@ -237,9 +239,20 @@ const fragmentShaderSource = `#version 300 es
     return 0.5 * (c[1] + 2.0 * c[2] * t + 3.0 * c[3] * t2);
   }
 
+  /*
   vec2 spline_acceleration(vec2[4] c, float t)
   {
     return 0.5 * (2.0 * c[2] + 6.0 * c[3] * t);
+  }
+  */
+
+  vec2 cubic_hermite_grad(vec2 f0, vec2 g0, vec2 f1, vec2 g1, float t) {
+    float t2 = t * t;
+    float h00g = 6.0 * t2 - 6.0 * t;
+    float h10g = 3.0 * t2 - 4.0 * t + 1.0;
+    float h01g = -6.0 * t2 + 6.0 * t;
+    float h11g = 3.0 * t2 - 2.0 * t;
+    return h00g * f0 + h10g * g0 + h01g * f1 + h11g * g1;
   }
 
   vec2[3] cubic_interp(vec2 osc, float omega, bool only_position)
@@ -261,7 +274,15 @@ const fragmentShaderSource = `#version 300 es
     if (only_position) return rva;
     float dscale = (omega / delta_theta);
     rva[1] = spline_derivative(c, w) * dscale;
-    rva[2] = spline_acceleration(c, w) * dscale * dscale;
+
+    // rva[2] = spline_acceleration(c, w) * dscale * dscale;
+
+    vec2 g0 = spline_derivative(c, 0.0);
+    vec2 g1 = spline_derivative(c, 1.0);
+    vec2 h0 = fn1 - 2.0 * f0 + f1;
+    vec2 h1 = f0 - 2.0 * f1 + f2;
+    rva[2] = cubic_hermite_grad(g0, h0, g1, h1, w) * dscale * dscale;
+
     return rva;
   }
 
