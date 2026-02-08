@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lienard-Wiechert Retarded Fields</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="container">
+    <canvas id="gl-canvas"></canvas>
+    <canvas id="2d-canvas"></canvas>
+  </div>
+
+  <!-- Vertex Shader -->
+  <script id="vertex-shader" type="x-shader/x-vertex">
+  #version 300 es
+  precision highp float;
+  in vec2 a_position;
+  void main() {
+    gl_Position = vec4(a_position, 0.0, 1.0);
+  }
+  </script>
+
+  <!-- Fragment Shader -->
+  <script id="fragment-shader" type="x-shader/x-fragment">
+  #version 300 es
+  precision highp float;
+  out vec4 fragColor;
+  uniform vec2 u_resolution;
+  uniform vec2 u_rho;
+  uniform float u_time;
+  uniform float u_zoom;
+  uniform float u_contrast;
+  uniform float u_vmax;
+  uniform float u_beta;
+  uniform float u_freq;
+  uniform int u_style;
+
+  // The number of spline points must be a power of two (for bitmask modulo op below)
+  #define NUM_SOURCE_VERTICES 32
+  uniform vec2 u_source_vertices[NUM_SOURCE_VERTICES];
+
+  const float PI = 3.141592653589793;
+  const float TWOPI = 2.0 * PI;
+  const float delta_theta = TWOPI / float(NUM_SOURCE_VERTICES);
+
+  vec2[4] catmull_rom_coefs(vec2 fn1, vec2 f0, vec2 f1, vec2 f2)
+  {
+    vec2[4] c;
+    c[0] = 2.0 * f0;
+    c[1] = -1.0 * fn1 + 1.0 * f1;
+    c[2] = 2.0 * fn1 - 5.0 * f0 + 4.0 * f1 - 1.0 * f2;
+    c[3] = -1.0 * fn1 + 3.0 * f0 - 3.0 * f1 + 1.0 * f2;
+    return c;
+  }
+
+  vec2 spline_value(vec2[4] c, float t)
+  {
+    float t2 = t * t;
+    return 0.5 * (c[0] + c[1] * t + c[2] * t2 + c[3] * t2 * t);
+  }
+
+  vec2 spline_derivative(vec2[4] c, float t)
+  {
+    float t2 = t * t;
+    return 0.5 * (c[1] + 2.0 * c[2] * t + 3.0 * c[3] * t2);
+  }
+
+  /*
+  vec2 spline_acceleration(vec2[4] c, float t)
+  {
+    return 0.5 * (2.0 * c[2] + 6.0 * c[3] * t);
+  }
+  */
+
+  vec2 cubic_hermite_grad(vec2 f0, vec2 g0, vec2 f1, vec2 g1, float t) {
+    float t2 = t * t;
+    float h00g = 6.0 * t2 - 6.0 * t;
+    float h10g = 3.0 * t2 - 4.0 * t + 1.0;
+    float h01g = -6.0 * t2 + 6.0 * t;
+    float h11g = 3.0 * t2 - 2.0 * t;
+    return h00g * f0 + h10g * g0 + h01g * f1 + h11g * g1;
+  }
+
+  vec2[3] cubic_interp(vec2 osc, float omega, bool only_position)
+  {
+    float theta = atan(osc.y, osc.x); // (-PI, PI]
+    float z = (theta + PI) / delta_theta; // float index into array
+    float w = fract(z);
+
+    int i0 = int(z);
+    vec2 fn1 = u_source_vertices[(i0 + NUM_SOURCE_VERTICES - 1) & (NUM_SOURCE_VERTICES - 1)];
+    vec2 f0 = u_source_vertices[i0 & (NUM_SOURCE_VERTICES - 1)];
+    vec2 f1 = u_source_vertices[(i0 + 1) & (NUM_SOURCE_VERTICES - 1)];
+    vec2 f2 = u_source_vertices[(i0 + 2) & (NUM_SOURCE_VERTICES - 1)];
+
+    vec2[4] c = catmull_rom_coefs(fn1, f0, f1, f2);
+
+    vec2[3] rva;
+    rva[0] = spline_value(c, w);
+    if (only_position) return rva;
+    float dscale = (omega / delta_theta);
+    rva[1] = spline_derivative(c, w) * dscale;
+
+    // rva[2] = spline_acceleration(c, w) * dscale * dscale;
+
+    vec2 g0 = spline_derivative(c, 0.0);
+    vec2 g1 = spline_derivative(c, 1.0);
+    vec2 h0 = fn1 - 2.0 * f0 + f1;
+    vec2 h1 = f0 - 2.0 * f1 + f2;
+    rva[2] = cubic_hermite_grad(g0, h0, g1, h1, w) * dscale * dscale;
+
+    return rva;
+  }
+
+  vec2 backroll_osc(vec2 osc, float omega, float tau) {
+    float theta = -omega * tau;
+    float cs = cos(theta);
+    float sn = sin(theta);
+    return vec2(cs * osc.x - sn * osc.y, sn * osc.x + cs * osc.y);
+  }
+
+  float root_function(vec2 osc, float omega, float c, vec2 pos, float tau) {
+    vec2 osc_ = backroll_osc(osc, omega, tau);
+    vec2[3] src = cubic_interp(osc_, omega, true);
+    return length(pos - src[0]) - c * tau;
+  }
+
+  // Bisect the retarded time tau for the present oscillator state and the present location 
+  float bisect_tau(vec2 osc, float omega, float c, vec2 pos) {
+    float tau0 = 0.0;
+    float f0 = root_function(osc, omega, c, pos, tau0);
+    if (f0 == 0.0) return tau0;
+    float tau1 = f0 / c;
+    float f1 = root_function(osc, omega, c, pos, tau1);
+    while (f1 > 0.0) {
+      tau0 = tau1;
+      f0 = f1;
+      tau1 *= 2.0;
+      f1 = root_function(osc, omega, c, pos, tau1);
+    };
+    if (f1 == 0.0) return tau1;
+    // Now f0 > 0 and f1 < 0 and tau0 < tau1; run a fixed number of iterations
+    for (int i = 0; i < 30; i++) {
+      if (tau1 - tau0 < 0.5e-6) break;
+      float tmid = (tau0 + tau1) / 2.0;
+      float fmid = root_function(osc, omega, c, pos, tmid);
+      if (fmid > 0.0) tau0 = tmid; else tau1 = tmid;
+    }
+    return (tau0 + tau1) / 2.0;
+  }
+
+  vec2 electric_field(float s, float BETA, float c, vec2 R, vec2 beta, vec2 vdot) {
+    float s2 = s * s;
+    float a1 = (1.0 - BETA * BETA) / (s2 * s);
+    float c2s2 = c * c * s2;
+    float a2 = dot(vdot, R) / (c2s2 * s);
+    float Rabs = length(R);
+    return a1 * R - a1 * Rabs * beta + a2 * R - a2 * Rabs * beta - Rabs * vdot / c2s2;
+  }
+
+  float magnetic_field(float s, float BETA, float c, vec2 R, vec2 beta, vec2 vdot) {
+    float beta_cross_r = beta.x * R.y - beta.y * R.x;
+    float betadot_cross_r = (vdot.x * R.y - vdot.y * R.x) / c;
+    float s2 = s * s;
+    float a1 = (1.0 - BETA * BETA) * c / (s2 * s);
+    float a2 = dot(vdot, R) / (c * s2 * s);
+    return beta_cross_r * (a1 + a2) + betadot_cross_r / s2;
+  }
+
+  void main()
+  {
+    float BETA = u_beta;
+    float OMEGA = 2.0 * PI * u_freq;
+    float c = abs(OMEGA) * u_vmax / BETA;
+
+    vec2 uv = 2.0 * (gl_FragCoord.xy / u_resolution.xy) - 1.0;
+    float aspect = u_resolution.x / u_resolution.y;
+    uv.x *= aspect;
+    uv *= u_zoom;
+
+    float phase = OMEGA * u_time;
+    vec2 osc = vec2(cos(phase), sin(phase));
+    float tau = bisect_tau(osc, OMEGA, c, uv);
+
+    vec2 osc_tau = backroll_osc(osc, OMEGA, tau);
+    vec2[3] src = cubic_interp(osc_tau, OMEGA, false);
+
+    vec2 rsrc = uv - src[0];
+    vec2 beta = src[1] / c;
+    float Rtau = c * tau;
+    float Rmod = Rtau - dot(beta, rsrc);
+
+    float Q = 1.0 / (1.0 + Rmod);
+    vec2 A = beta / (1.0 + Rmod);
+
+    float alpha = 1.0;
+    vec3 color;
+
+    if (u_style == 0) {
+      float Bz = magnetic_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
+      color = vec3(0.0, 0.0, Bz * Bz);
+    } else if (u_style == 1) {
+      vec2 E = electric_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
+      color = vec3(0.0, dot(E, E), 0.0);
+    } else if (u_style == 2) {
+      float Asq = dot(A, A);
+      // color = vec3(Rmod / u_zoom, 0.0, 0.0);
+      color = vec3(Asq, 0.0, Asq);
+    } else if (u_style == 3) {
+      color = vec3(Q, 0.0, 0.0);
+    } else {
+      float Bz = magnetic_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
+      vec2 E = electric_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
+      vec2 S = vec2(E.y * Bz, -E.x * Bz);
+      color = vec3(1.0, 1.0, 1.0) * length(S);
+    }
+
+    if (u_contrast != 1.0) color = pow(color, vec3(u_contrast));
+    fragColor = vec4(color, alpha);
+  }
+  </script>
+
+  <script src="retarded-quintic.js"></script>
+</body>
+
+</html>
