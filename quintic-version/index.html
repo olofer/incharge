@@ -24,7 +24,6 @@
     <canvas id="2d-canvas"></canvas>
   </div>
 
-  <!-- Vertex Shader -->
   <script id="vertex-shader" type="x-shader/x-vertex">
   #version 300 es
   precision highp float;
@@ -34,7 +33,6 @@
   }
   </script>
 
-  <!-- Fragment Shader -->
   <script id="fragment-shader" type="x-shader/x-fragment">
   #version 300 es
   precision highp float;
@@ -57,45 +55,43 @@
   const float TWOPI = 2.0 * PI;
   const float delta_theta = TWOPI / float(NUM_SOURCE_VERTICES);
 
-  vec2[4] catmull_rom_coefs(vec2 fn1, vec2 f0, vec2 f1, vec2 f2)
+  vec2[6] quintic_coefs(vec2 fn1, vec2 f0, vec2 f1, vec2 f2)
   {
-    vec2[4] c;
-    c[0] = 2.0 * f0;
-    c[1] = -1.0 * fn1 + 1.0 * f1;
-    c[2] = 2.0 * fn1 - 5.0 * f0 + 4.0 * f1 - 1.0 * f2;
-    c[3] = -1.0 * fn1 + 3.0 * f0 - 3.0 * f1 + 1.0 * f2;
+    vec2[6] c;
+    vec2 df0 = 0.5 * (f1 - fn1);
+    vec2 ddf0 = fn1 - 2.0 * f0 + f1;
+    vec2 df1 = 0.5 * (f2 - f0);
+    vec2 ddf1 = f0 - 2.0 * f1 + f2;
+    c[0] = 1.0 * f0;
+    c[1] = 1.0 * df0;
+    c[2] = 0.5 * ddf0;
+    c[3] = -1.0 * f0 - 6.0 * df0 - 1.5 * ddf0 + 10.0 * f1 - 4.0 * df1 + 0.5 * ddf1;
+    c[4] = 1.5 * f0 + 8.0 * df0 + 1.5 * ddf0 - 15.0 * f1 + 7.0 * df1 - 1.0 * ddf1;
+    c[5] = -6.0 * f0 - 3.0 * df0 - 0.5 * ddf0 + 6.0 * f1 - 3.0 * df1 + 0.5 * ddf1;
     return c;
   }
 
-  vec2 spline_value(vec2[4] c, float t)
+  vec2 quintic_position(vec2[6] c, float t)
   {
     float t2 = t * t;
-    return 0.5 * (c[0] + c[1] * t + c[2] * t2 + c[3] * t2 * t);
+    float t4 = t2 * t2;
+    return c[0] + c[1] * t + c[2] * t2 + c[3] * t2 * t + c[4] * t4 + c[5] * t4 * t;
   }
 
-  vec2 spline_derivative(vec2[4] c, float t)
+  vec2 quintic_velocity(vec2[6] c, float t)
   {
     float t2 = t * t;
-    return 0.5 * (c[1] + 2.0 * c[2] * t + 3.0 * c[3] * t2);
+    float t4 = t2 * t2;
+    return c[1] + 2.0 * c[2] * t + 3.0 * c[3] * t2 + 4.0 * c[4] * t2 * t + 5.0 * c[5] * t4;
   }
 
-  /*
-  vec2 spline_acceleration(vec2[4] c, float t)
+  vec2 quintic_acceleration(vec2[6] c, float t)
   {
-    return 0.5 * (2.0 * c[2] + 6.0 * c[3] * t);
-  }
-  */
-
-  vec2 cubic_hermite_grad(vec2 f0, vec2 g0, vec2 f1, vec2 g1, float t) {
     float t2 = t * t;
-    float h00g = 6.0 * t2 - 6.0 * t;
-    float h10g = 3.0 * t2 - 4.0 * t + 1.0;
-    float h01g = -6.0 * t2 + 6.0 * t;
-    float h11g = 3.0 * t2 - 2.0 * t;
-    return h00g * f0 + h10g * g0 + h01g * f1 + h11g * g1;
+    return 2.0 * c[2] + 6.0 * c[3] * t + 12.0 * c[4] * t2 + 20.0 * c[5] * t2 * t;
   }
 
-  vec2[3] cubic_interp(vec2 osc, float omega, bool only_position)
+  vec2[3] quintic_interp(vec2 osc, float omega, bool only_position)
   {
     float theta = atan(osc.y, osc.x); // (-PI, PI]
     float z = (theta + PI) / delta_theta; // float index into array
@@ -107,21 +103,15 @@
     vec2 f1 = u_source_vertices[(i0 + 1) & (NUM_SOURCE_VERTICES - 1)];
     vec2 f2 = u_source_vertices[(i0 + 2) & (NUM_SOURCE_VERTICES - 1)];
 
-    vec2[4] c = catmull_rom_coefs(fn1, f0, f1, f2);
+    vec2[6] c = quintic_coefs(fn1, f0, f1, f2);
 
     vec2[3] rva;
-    rva[0] = spline_value(c, w);
+    rva[0] = quintic_position(c, w);
     if (only_position) return rva;
+
     float dscale = (omega / delta_theta);
-    rva[1] = spline_derivative(c, w) * dscale;
-
-    // rva[2] = spline_acceleration(c, w) * dscale * dscale;
-
-    vec2 g0 = spline_derivative(c, 0.0);
-    vec2 g1 = spline_derivative(c, 1.0);
-    vec2 h0 = fn1 - 2.0 * f0 + f1;
-    vec2 h1 = f0 - 2.0 * f1 + f2;
-    rva[2] = cubic_hermite_grad(g0, h0, g1, h1, w) * dscale * dscale;
+    rva[1] = quintic_velocity(c, w) * dscale;
+    rva[2] = quintic_acceleration(c, w) * dscale * dscale;
 
     return rva;
   }
@@ -135,7 +125,7 @@
 
   float root_function(vec2 osc, float omega, float c, vec2 pos, float tau) {
     vec2 osc_ = backroll_osc(osc, omega, tau);
-    vec2[3] src = cubic_interp(osc_, omega, true);
+    vec2[3] src = quintic_interp(osc_, omega, true);
     return length(pos - src[0]) - c * tau;
   }
 
@@ -197,7 +187,7 @@
     float tau = bisect_tau(osc, OMEGA, c, uv);
 
     vec2 osc_tau = backroll_osc(osc, OMEGA, tau);
-    vec2[3] src = cubic_interp(osc_tau, OMEGA, false);
+    vec2[3] src = quintic_interp(osc_tau, OMEGA, false);
 
     vec2 rsrc = uv - src[0];
     vec2 beta = src[1] / c;
