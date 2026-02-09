@@ -65,9 +65,9 @@
     c[0] = 1.0 * f0;
     c[1] = 1.0 * df0;
     c[2] = 0.5 * ddf0;
-    c[3] = -1.0 * f0 - 6.0 * df0 - 1.5 * ddf0 + 10.0 * f1 - 4.0 * df1 + 0.5 * ddf1;
-    c[4] = 1.5 * f0 + 8.0 * df0 + 1.5 * ddf0 - 15.0 * f1 + 7.0 * df1 - 1.0 * ddf1;
-    c[5] = -6.0 * f0 - 3.0 * df0 - 0.5 * ddf0 + 6.0 * f1 - 3.0 * df1 + 0.5 * ddf1;
+    c[3] = -10.0 * f0 - 6.0 * df0 - 1.5 * ddf0 + 10.0 * f1 - 4.0 * df1 + 0.5 * ddf1;
+    c[4] =  15.0 * f0 + 8.0 * df0 + 1.5 * ddf0 - 15.0 * f1 + 7.0 * df1 - 1.0 * ddf1;
+    c[5] =  -6.0 * f0 - 3.0 * df0 - 0.5 * ddf0  + 6.0 * f1 - 3.0 * df1 + 0.5 * ddf1;
     return c;
   }
 
@@ -93,7 +93,7 @@
 
   vec2[3] quintic_interp(vec2 osc, float omega, bool only_position)
   {
-    float theta = atan(osc.y, osc.x); // (-PI, PI]
+    float theta = atan(osc.y, osc.x); // (-PI, PI)
     float z = (theta + PI) / delta_theta; // float index into array
     float w = fract(z);
 
@@ -208,7 +208,6 @@
       color = vec3(0.0, dot(E, E), 0.0);
     } else if (u_style == 2) {
       float Asq = dot(A, A);
-      // color = vec3(Rmod / u_zoom, 0.0, 0.0);
       color = vec3(Asq, 0.0, Asq);
     } else if (u_style == 3) {
       color = vec3(Q, 0.0, 0.0);
