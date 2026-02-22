@@ -1,35 +1,31 @@
 /*
 
-Particle paths are specified by vertices in a buffer, in a periodic sense.
-The function values for (x,y) at each vertex are used to define 1st and 2nd derivatives via finite differences.
-Interpolation of the path is then done with quintic polynomials. The 2nd derivative is always continuous.
-This is important to get "nice" radiation visuals.
+Source trajectories are defined with piecewise cubic B-splines.
+The smooth paths have continuous acceleration, but do not pass through its control points.
 
-TODO: implement the quintic machinery (and also replicate it in the JS driver code)
 TODO: allow more than one particle movement; at least a dipole radiator should be possible!
 
 */
 
-function catmull_rom_coefs(f) {
+function bcubic_coefs(f) {
   const fn1 = f[0];
   const f0 = f[1];
   const f1 = f[2];
   const f2 = f[3];
-  const c0 = 2.0 * f0;
-  const c1 = -1.0 * fn1 + 1.0 * f1;
-  const c2 = 2.0 * fn1 - 5.0 * f0 + 4.0 * f1 - 1.0 * f2;
-  const c3 = -1.0 * fn1 + 3.0 * f0 - 3.0 * f1 + 1.0 * f2;
+  c0 = (fn1 + 4.0 * f0 + f1) / 6.0;
+  c1 = (-3.0 * fn1 + 3.0 * f1) / 6.0;
+  c2 = (3.0 * fn1 - 6.0 * f0 + 3.0 * f1) / 6.0;
+  c3 = (-fn1 + 3.0 * f0 - 3.0 * f1 + f2) / 6.0;
   return [c0, c1, c2, c3];
 }
 
 function spline_value(c, t) {
   const t2 = t * t;
-  return 0.5 * (c[0] + c[1] * t + c[2] * t2 + c[3] * t2 * t);
+  return c[0] + c[1] * t + c[2] * t2 + c[3] * t2 * t;
 }
 
 function spline_derivative(c, t) {
-  const t2 = t * t;
-  return 0.5 * (c[1] + 2.0 * c[2] * t + 3.0 * c[3] * t2);
+  return c[1] + 2.0 * c[2] * t + 3.0 * c[3] * t * t;
 }
 
 function cubic_interp(theta, omega, vertices) {
@@ -45,8 +41,8 @@ function cubic_interp(theta, omega, vertices) {
   const i0 = idx % npts;
   const i1 = (idx + 1) % npts;
   const i2 = (idx + 2) % npts;
-  const cx = catmull_rom_coefs([vertices[2 * in1 + 0], vertices[2 * i0 + 0], vertices[2 * i1 + 0], vertices[2 * i2 + 0]]);
-  const cy = catmull_rom_coefs([vertices[2 * in1 + 1], vertices[2 * i0 + 1], vertices[2 * i1 + 1], vertices[2 * i2 + 1]]);
+  const cx = bcubic_coefs([vertices[2 * in1 + 0], vertices[2 * i0 + 0], vertices[2 * i1 + 0], vertices[2 * i2 + 0]]);
+  const cy = bcubic_coefs([vertices[2 * in1 + 1], vertices[2 * i0 + 1], vertices[2 * i1 + 1], vertices[2 * i2 + 1]]);
   const rx = spline_value(cx, w);
   const ry = spline_value(cy, w);
   const vx = spline_derivative(cx, w) * dscale;
