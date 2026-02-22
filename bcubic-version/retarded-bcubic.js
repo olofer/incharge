@@ -336,6 +336,12 @@ function keyDownEvent(e) {
   if (key == 'r' || key == 'R') {
     simTime = 0.0;
     contrastLevel = 1.0;
+    zoomLevel = 8.0;
+    plotStyle = 3;
+    contrastLevel = 1.0;
+    IPATH = 1;
+    generate_preset_path(IPATH);
+    VMAX = find_maximum_velocity(1.0, sourceVertices, SCANFACTOR);
     return;
   }
 
@@ -392,7 +398,8 @@ function render() {
     ctx.font = '20px Arial';
     ctx.fillText('<fps> = ' + filteredFPS.toFixed(1), 20.0, canvas2d.height - 25.0);
     ctx.fillText('[tab] ' + styleName[plotStyle] + ', [b] beta: ' + betaLevel.toFixed(4) + ', [f] (anim.) freq: ' + freqValue.toFixed(4), 20.0, 25.0);
-    ctx.fillText('[up/dn] path preset #' + IPATH.toFixed(0) + ' [space] to show', 20.0, 45.0);
+    ctx.fillText('[up/dn] path preset #' + IPATH.toFixed(0) + ' [space] to show [c] edit contrast', 20.0, 45.0);
+    ctx.fillText('[shift+up/dn] zoom in/out' + ' [h] hide/show text [r] reset', 20.0, 65.0);
   }
 
   if (showPath) {
