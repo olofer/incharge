@@ -172,20 +172,17 @@
     uv.x *= aspect;
     uv *= u_zoom;
 
-    float phase = OMEGA * u_time;
-    vec2 osc = vec2(cos(phase), sin(phase));
-    float tau = bisect_tau(osc, OMEGA, c, uv);
-
-    vec2 osc_tau = backroll_osc(osc, OMEGA, tau);
-    vec2[3] src = bcubic_interp(osc_tau, OMEGA, false);
-
-    vec2 rsrc = uv - src[0];
-    vec2 beta = src[1] / c;
-    float Rtau = c * tau;
-    float Rmod = Rtau - dot(beta, rsrc);
-
     float alpha = 1.0;
     vec3 color;
+
+    float phase = OMEGA * u_time;
+    vec2 osc = vec2(cos(phase), sin(phase));
+
+    float tau = bisect_tau(osc, OMEGA, c, uv);
+    vec2[3] src = bcubic_interp(backroll_osc(osc, OMEGA, tau), OMEGA, false);
+    vec2 rsrc = uv - src[0];
+    vec2 beta = src[1] / c;
+    float Rmod = c * tau - dot(beta, rsrc);
 
     if (u_style == 0) {
       float Bz = magnetic_field(1.0 + Rmod, BETA, c, rsrc, beta, src[2]);
