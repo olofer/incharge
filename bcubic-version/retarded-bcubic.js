@@ -3,8 +3,6 @@
 Source trajectories are defined with piecewise cubic B-splines.
 The smooth paths have continuous acceleration, but do not pass through its control points.
 
-TODO: allow more than one particle movement; at least a dipole radiator should be possible!
-
 */
 
 function bcubic_coefs(f) {
@@ -228,6 +226,7 @@ const vmaxUniformLocation = gl.getUniformLocation(program, 'u_vmax');
 const betaUniformLocation = gl.getUniformLocation(program, 'u_beta');
 const freqUniformLocation = gl.getUniformLocation(program, 'u_freq');
 const styleUniformLocation = gl.getUniformLocation(program, 'u_style');
+const dipoleUniformLocation = gl.getUniformLocation(program, 'u_dipole');
 
 // Create buffer for a full-screen quad
 const positionBuffer = gl.createBuffer();
@@ -253,8 +252,9 @@ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
 // Animation loop
 const numPlotStyles = 5;
-const styleName = ["dens. |B|^2", "dens. |E|^2", "pot. |A|^2", "pot. Phi", "flow |S|"];
+const styleName = ["dens. |B|^2", "dens. |E|^2", "pot. |A|^2", "pot. |Phi|", "flow |S|"];
 let plotStyle = 3;
+let dipoleToggle = 0;
 const betaFPSfilter = 1.0 / 100.0;
 let filteredFPS = 0.0;
 let lastTime = performance.now();
@@ -356,6 +356,12 @@ function keyDownEvent(e) {
     return;
   }
 
+  if (key == 'd' || key == 'D') {
+    dipoleToggle = (dipoleToggle + 1) % 2;
+    console.log("dipoleToggle", dipoleToggle);
+    return;
+  }
+
 }
 
 window.addEventListener('keydown', keyDownEvent);
@@ -380,6 +386,7 @@ function render() {
   gl.uniform1f(vmaxUniformLocation, VMAX);
   gl.uniform1f(freqUniformLocation, freqValue);
   gl.uniform1i(styleUniformLocation, plotStyle);
+  gl.uniform1i(dipoleUniformLocation, dipoleToggle);
 
   // Clear and draw
   gl.clearColor(0, 0, 0, 1);
@@ -398,25 +405,13 @@ function render() {
     ctx.font = '20px Arial';
     ctx.fillText('<fps> = ' + filteredFPS.toFixed(1), 20.0, canvas2d.height - 25.0);
     ctx.fillText('[tab] ' + styleName[plotStyle] + ', [b] beta: ' + betaLevel.toFixed(4) + ', [f] (anim.) freq: ' + freqValue.toFixed(4), 20.0, 25.0);
-    ctx.fillText('[up/dn] path preset #' + IPATH.toFixed(0) + ' [space] to show [c] edit contrast', 20.0, 45.0);
+    ctx.fillText('[up/dn] path preset #' + IPATH.toFixed(0) + ' [space] to show [c] edit contrast [d] toggle dipole', 20.0, 45.0);
     ctx.fillText('[shift+up/dn] zoom in/out' + ' [h] hide/show text [r] reset', 20.0, 65.0);
   }
 
   if (showPath) {
-    /*
-    ctx.strokeStyle = 'red';
-    ctx.lineWidth = 8;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(canvas2d.width, canvas2d.height);
-    ctx.moveTo(canvas2d.width, 0);
-    ctx.lineTo(0, canvas2d.height);
-    ctx.stroke();
-    */
-
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(255,255,255,0.33)';
-
     const wh = [canvas2d.width, canvas2d.height];
     draw_path_on_canvas(ctx, wh, zoomLevel, sourceVertices, 5);
   }
