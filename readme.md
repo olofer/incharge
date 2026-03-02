@@ -1,10 +1,12 @@
 # incharge
 
-Dynamical visualization of the explicit Lienard-Wiechert retarded potentials, and associated fields, in a browser window. 
-
-Try out here: <https://raw.githack.com/olofer/incharge/main/bcubic-version/index.html>
-
 *WIP WIP WIP*
+
+Dynamical visualization of the explicit Lienard-Wiechert retarded potentials, and associated fields, in a browser window.
+
+Try out here: <https://olofer.github.io/incharge>
+
+Alternatively here: <https://raw.githack.com/olofer/incharge/main/bcubic-version/index.html>
 
 ### (abandoned) Periodic cubic spline version (Catmull-Rom)
 
