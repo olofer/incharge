@@ -298,8 +298,10 @@ function keyDownEvent(e) {
   }
 
   if (key == 'f' || key == 'F') {
-    freqValue += e.shiftKey ? -0.05 : 0.05;
-    if (freqValue < 0.05) freqValue = 0.05;
+    let old_phase = freqValue * simTime;
+    freqValue += e.shiftKey ? -0.025 : 0.025;
+    if (freqValue < 0.025) freqValue = 0.025;
+    simTime = old_phase / freqValue; // adjust the simulation time so that the phase remains fixed
     return;
   }
 
